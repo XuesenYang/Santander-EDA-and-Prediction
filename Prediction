@@ -1,0 +1,61 @@
+import gc
+import os
+import logging
+import datetime
+import warnings
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import lightgbm as lgb
+from tqdm import tqdm_notebook
+import matplotlib.pyplot as plt
+from sklearn.metrics import mean_squared_error
+from sklearn.metrics import roc_auc_score, roc_curve
+from sklearn.model_selection import StratifiedKFold
+warnings.filterwarnings('ignore')
+
+## Load data  
+# Let's check what data files are available.
+IS_LOCAL = False
+if(IS_LOCAL):
+    PATH="../input/Santander/"
+else:
+    PATH="../input/"
+os.listdir(PATH)
+
+# Let's load the train and test data files.
+%%time
+train_df = pd.read_csv(PATH+"train.csv")
+test_df = pd.read_csv(PATH+"test.csv")
+
+# check the data
+train_df.shape, test_df.shape
+
+#Let's glimpse train and test dataset.
+train_df.head()
+test_df.head()
+
+# missing data checking
+def missing_data(data):
+    total = data.isnull().sum()
+    percent = (data.isnull().sum()/data.isnull().count()*100)
+    tt = pd.concat([total, percent], axis=1, keys=['Total', 'Percent'])
+    types = []
+    for col in data.columns:
+        dtype = str(data[col].dtype)
+        types.append(dtype)
+    tt['Types'] = types
+    return(np.transpose(tt))
+    
+%%time
+missing_data(train_df)
+%%time
+missing_data(test_df)
+
+# check the numerical values in train and test dataset
+%%time
+train_df.describe()
+%%time
+train_df.describe()
+
+# plot the scatter plot for train and test set
