@@ -333,3 +333,72 @@ def plot_new_feature_distribution(df1, df2, label1, label2, features):
         plt.tick_params(axis='x', which='major', labelsize=8)
         plt.tick_params(axis='y', which='major', labelsize=8)
     plt.show();
+ ## check the distribution of these new, engineered features.
+t0 = train_df.loc[train_df['target'] == 0]
+t1 = train_df.loc[train_df['target'] == 1]
+features = train_df.columns.values[202:]
+plot_new_feature_distribution(t0, t1, 'target: 0', 'target: 1', features)
+features = train_df.columns.values[202:]
+plot_new_feature_distribution(train_df, test_df, 'train', 'test', features)
+print('Train and test columns: {} {}'.format(len(train_df.columns), len(test_df.columns)))
+
+# construct model
+features = [c for c in train_df.columns if c not in ['ID_code', 'target']]
+target = train_df['target']
+param = {
+    'bagging_freq': 5,
+    'bagging_fraction': 0.4,
+    'boost_from_average':'false',
+    'boost': 'gbdt',
+    'feature_fraction': 0.05,
+    'learning_rate': 0.01,
+    'max_depth': -1,  
+    'metric':'auc',
+    'min_data_in_leaf': 80,
+    'min_sum_hessian_in_leaf': 10.0,
+    'num_leaves': 13,
+    'num_threads': 8,
+    'tree_learner': 'serial',
+    'objective': 'binary', 
+    'verbosity': 1
+}
+folds = StratifiedKFold(n_splits=10, shuffle=False, random_state=44000)
+oof = np.zeros(len(train_df))
+predictions = np.zeros(len(test_df))
+feature_importance_df = pd.DataFrame()
+
+for fold_, (trn_idx, val_idx) in enumerate(folds.split(train_df.values, target.values)):
+    print("Fold {}".format(fold_))
+    trn_data = lgb.Dataset(train_df.iloc[trn_idx][features], label=target.iloc[trn_idx])
+    val_data = lgb.Dataset(train_df.iloc[val_idx][features], label=target.iloc[val_idx])
+
+    num_round = 1000000
+    clf = lgb.train(param, trn_data, num_round, valid_sets = [trn_data, val_data], verbose_eval=1000, early_stopping_rounds = 3000)
+    oof[val_idx] = clf.predict(train_df.iloc[val_idx][features], num_iteration=clf.best_iteration)
+    
+    fold_importance_df = pd.DataFrame()
+    fold_importance_df["Feature"] = features
+    fold_importance_df["importance"] = clf.feature_importance()
+    fold_importance_df["fold"] = fold_ + 1
+    feature_importance_df = pd.concat([feature_importance_df, fold_importance_df], axis=0)
+    
+    predictions += clf.predict(test_df[features], num_iteration=clf.best_iteration) / folds.n_splits
+
+print("CV score: {:<8.5f}".format(roc_auc_score(target, oof)))
+## feature ranking
+cols = (feature_importance_df[["Feature", "importance"]]
+        .groupby("Feature")
+        .mean()
+        .sort_values(by="importance", ascending=False)[:150].index)
+best_features = feature_importance_df.loc[feature_importance_df.Feature.isin(cols)]
+
+plt.figure(figsize=(14,28))
+sns.barplot(x="importance", y="Feature", data=best_features.sort_values(by="importance",ascending=False))
+plt.title('Features importance (averaged/folds)')
+plt.tight_layout()
+plt.savefig('FI.png')
+
+#submit the solution
+sub_df = pd.DataFrame({"ID_code":test_df["ID_code"].values})
+sub_df["target"] = predictions
+sub_df.to_csv("submission.csv", index=False)
